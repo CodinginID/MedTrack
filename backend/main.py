@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
@@ -15,6 +16,16 @@ from twilio.rest import Client
 import random
 
 app = FastAPI()
+
+# Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Ganti dengan origin yang spesifik
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Tentukan method yang dibutuhkan saja
+    allow_headers=["Authorization", "Content-Type"],  # Tentukan header yang dibutuhkan saja
+    max_age=3600  # Cache preflight request selama 1 jam
+)
 security = HTTPBearer()
 
 # Database
@@ -31,7 +42,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Twilio
 TWILIO_SID = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
-TWILIO_PHONE = os.getenv("TWILIO_PHONE", "+14155238886")
+TWILIO_PHONE = os.getenv("TWILIO_PHONE", "+6281553335534")
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -65,6 +76,7 @@ class Queue(Base):
     doctor_id = Column(Integer, ForeignKey("doctors.id", ondelete="CASCADE"))
     queue_number = Column(Integer)
     estimated_time = Column(DateTime)
+    service_type = Column(String(30))
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Tambahkan relasi balik ke Doctor
@@ -93,10 +105,10 @@ class ResponseModel(GenericModel, Generic[T]):
     class Config:
         arbitrary_types_allowed = True
 class UserCreate(BaseModel):
-    name: str
-    email: str
-    password: str
-    phone: str
+    name: str = "admin2"
+    email: str = "admin2@gmail.com"
+    password: str = "password123"
+    phone: str = "6281553335534"
 
 class Login(BaseModel):
     username:str = "admin2@gmail.com"
@@ -275,8 +287,7 @@ def create_queue(
         doctor_id=queue.doctor_id,
         queue_number=queue_number,
         estimated_time=estimated_time,
-        service_type=queue.service_type,
-        schedule=queue.schedule
+        service_type=doctor.jenis_layanan
     )
     
     db.add(db_queue)
@@ -299,14 +310,22 @@ def create_queue(
             to=f"whatsapp:{current_user.phone}"
         )
     except Exception as e:
-        print(f"Error sending WhatsApp notification: {e}")
+        return create_response(
+            status=False,
+            message=f"Gagal mengirim notifikasi WhatsApp: {str(e)}"
+        )
+       
     
-    return {
-        "id": db_queue.id,
-        "queue_number": db_queue.queue_number,
-        "estimated_time": db_queue.estimated_time,
-        "phone": current_user.phone
-    }
+    return create_response(
+        status=True,
+        message="Antrian berhasil dibuat",
+        data={
+            "id": db_queue.id,
+            "queue_number": db_queue.queue_number,
+            "estimated_time": db_queue.estimated_time,
+            "phone": current_user.phone
+        }
+    )
 
 
 # Payments

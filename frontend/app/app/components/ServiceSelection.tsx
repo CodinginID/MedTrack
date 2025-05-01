@@ -1,14 +1,31 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function ServiceSelection({ onServiceSelect }: { onServiceSelect: (service: { id: number; name: string }) => void }) {
   const [selectedService, setSelectedService] = useState('')
   
-  const services = [
-    { id: 1, name: 'Pemeriksaan Umum' },
-    { id: 2, name: 'Pemeriksaan Gigi' },
-    { id: 3, name: 'Konsultasi Spesialis' },
-  ]
+  const [services, setServices] = useState<Array<{ id: number; name: string }>>([])
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/services')
+        const result = await response.json()
+        if (result.status && result.data) {
+          // Map services sesuai dengan jenis_layanan di database
+          const mappedServices = result.data.map((serviceName: string) => ({
+            id: serviceName, // Gunakan nama layanan sebagai id
+            name: serviceName
+          }))
+          setServices(mappedServices)
+        }
+      } catch (error) {
+        console.error('Error fetching services:', error)
+      }
+    }
+
+    fetchServices()
+  }, [])
 
   return (
     <div className="space-y-4">

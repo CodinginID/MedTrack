@@ -1,17 +1,40 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function DoctorSelection({ serviceId, onDoctorSelect }: { serviceId: number, onDoctorSelect: (doctor: { id: number, name: string, serviceId: number, schedule: string }) => void }) {
   const [selectedDoctor, setSelectedDoctor] = useState('')
   
-  const doctors = [
-    { id: 1, name: 'dr. Ahmad', serviceId: 1, schedule: '08:00 - 14:00' },
-    { id: 2, name: 'dr. Budi', serviceId: 1, schedule: '14:00 - 20:00' },
-    { id: 3, name: 'drg. Citra', serviceId: 2, schedule: '09:00 - 15:00' },
-    { id: 4, name: 'dr. Diana, Sp.PD', serviceId: 3, schedule: '10:00 - 16:00' },
-  ]
+  const [doctors, setDoctors] = useState<Array<{
+    id: number;
+    nama: string;
+    jenis_layanan: string;
+    spesialisasi: string;
+    jam_praktek: string;
+    is_active: boolean;
+  }>>([])
 
-  const availableDoctors = doctors.filter(doctor => doctor.serviceId === serviceId)
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      try {
+        const response = await fetch(`http://localhost:8000/doctors/search/${serviceId}?skip=0&limit=100`)
+        if (!response.ok) {
+          throw new Error('Failed to fetch doctors')
+        }
+        const result = await response.json()
+        setDoctors(result.data) // Mengambil array doctors dari property data
+      } catch (error) {
+        console.error('Error fetching doctors:', error)
+        setDoctors([])
+      }
+    }
+
+    if (serviceId) {
+      fetchDoctors()
+    }
+  }, [serviceId])
+
+  // Menyesuaikan filter dengan struktur data yang baru
+  const availableDoctors = doctors.filter(doctor => doctor.jenis_layanan === serviceId.toString())
 
   return (
     <div className="space-y-4">
@@ -22,7 +45,12 @@ export default function DoctorSelection({ serviceId, onDoctorSelect }: { service
             key={doctor.id}
             onClick={() => {
               setSelectedDoctor(doctor.id.toString())
-              onDoctorSelect(doctor)
+              onDoctorSelect({
+                id: doctor.id,
+                name: doctor.nama,
+                serviceId: parseInt(doctor.jenis_layanan),
+                schedule: doctor.jam_praktek
+              })
             }}
             className={`p-4 border rounded-lg ${
               selectedDoctor === doctor.id.toString()
@@ -31,8 +59,9 @@ export default function DoctorSelection({ serviceId, onDoctorSelect }: { service
             }`}
           >
             <div className="text-left">
-              <p className="font-medium">{doctor.name}</p>
-              <p className="text-sm">Jam Praktik: {doctor.schedule}</p>
+              <p className="font-medium font-bold">{doctor.nama}</p>
+              <p className="font-medium">{doctor.spesialisasi}</p>
+              <p className="text-sm">Jam Praktik: {doctor.jam_praktek}</p>
             </div>
           </button>
         ))}

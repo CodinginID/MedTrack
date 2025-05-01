@@ -233,6 +233,7 @@ export default function DashboardPage() {
             <div className="space-y-2">
               <p><span className="font-medium">Layanan:</span> {selectedService?.name}</p>
               <p><span className="font-medium">Dokter:</span> {selectedDoctor?.name}</p>
+
               <p><span className="font-medium">Jadwal:</span> {selectedDoctor?.schedule}</p>
             </div>
           </div>
