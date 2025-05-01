@@ -7,8 +7,9 @@ from sqlalchemy.orm import sessionmaker, relationship
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, TypeVar, Generic, Optional,  Any, Dict
 from pydantic import BaseModel
+from pydantic.generics import GenericModel
 import os
 from twilio.rest import Client
 import random
@@ -81,6 +82,16 @@ class Payment(Base):
 Base.metadata.create_all(bind=engine)
 
 # Pydantic models
+
+T = TypeVar("T")
+class ResponseModel(GenericModel, Generic[T]):
+    status: bool = True
+    message: str
+    data: Optional[T] = None
+    error: Optional[str] = None
+
+    class Config:
+        arbitrary_types_allowed = True
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -140,6 +151,17 @@ def get_db():
     finally:
         db.close()
 
+def create_response(
+    status: bool = True,
+    message: str = "Success",
+    data: Any = None
+) -> Dict:
+    return ResponseModel(
+        status=status,
+        message=message,
+        data=data
+    ).dict()
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security), db: Session = Depends(get_db)):
     try:
         token = credentials.credentials
@@ -162,7 +184,12 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-@app.post("/auth/register")
+@app.post("/auth/register"
+   , status_code=status.HTTP_201_CREATED,
+    tags=["Auth"],
+    summary="Register a new user",
+    description="Register a new user with the provided information"
+)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     # Check if user already exists
     existing_user = db.query(User).filter((User.email == user.email) | (User.name == user.name)).first()
@@ -178,7 +205,13 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     return {"message": "User registered"}
 
-@app.post("/auth/login", response_model=dict)
+@app.post("/auth/login", 
+    status_code=status.HTTP_200_OK,
+    tags=["Auth"],
+    summary="Login",
+    description="Login with username and password",
+    response_model=dict
+)
 def login(form_data: Login, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not pwd_context.verify(form_data.password, user.password):
@@ -186,16 +219,23 @@ def login(form_data: Login, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
 
-@app.get("/auth/me", response_model=UserResponse)
+@app.get("/auth/me", 
+    status_code=status.HTTP_200_OK,
+    tags=["Auth"],
+    summary="Get current user",
+    description="Get the current user",
+    response_model=UserResponse
+)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-# Doctors
-@app.get("/doctors", response_model=List[DoctorResponse])
-def get_doctors(db: Session = Depends(get_db)):
-    return db.query(Doctor).all()
-
-@app.get("/doctors/{doctor_id}/schedule")
+@app.get("/doctors/{doctor_id}/schedule"
+    , status_code=status.HTTP_200_OK,
+    tags=["Doctors"],
+    summary="Get a doctor's schedule",
+    description="Get a doctor's schedule for the current day",
+    response_model=dict
+)
 def get_doctor_schedule(doctor_id: int, db: Session = Depends(get_db)):
     doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
     if not doctor:
@@ -203,7 +243,13 @@ def get_doctor_schedule(doctor_id: int, db: Session = Depends(get_db)):
     return {"schedule": f"{doctor.name} available today from 08:00 to 16:00"}
 
 # Queues
-@app.post("/queues", response_model=QueueResponse)
+@app.post("/queues", 
+    status_code=status.HTTP_201_CREATED,
+    tags=["Queues"],
+    summary="Create a new queue",
+    description="Create a new queue for the current user",
+    response_model=QueueResponse    
+)
 def create_queue(
     queue: QueueCreate, 
     db: Session = Depends(get_db), 
@@ -264,7 +310,13 @@ def create_queue(
 
 
 # Payments
-@app.post("/payments", response_model=PaymentResponse)
+@app.post("/payments", 
+    status_code=status.HTTP_201_CREATED,
+    tags=["Payments"],
+    summary="Create a new payment",
+    description="Create a new payment for the current user",
+    response_model=PaymentResponse
+)
 def create_payment(payment: PaymentCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     queue = db.query(Queue).filter(Queue.id == payment.queue_id, Queue.user_id == current_user.id).first()
     if not queue:
@@ -282,7 +334,13 @@ def create_payment(payment: PaymentCreate, db: Session = Depends(get_db), curren
 
 
 # Create Doctor
-@app.post("/doctors", response_model=DoctorResponse)
+@app.post("/doctors", 
+    response_model=DoctorResponse, 
+    status_code=status.HTTP_201_CREATED,
+    tags=["Doctors"],
+    summary="Create a new doctor",
+    description="Create a new doctor with the provided information"
+)
 def create_doctor(
     doctor: DoctorCreate,
     db: Session = Depends(get_db),
@@ -295,17 +353,42 @@ def create_doctor(
     return db_doctor
 
 # Get All Doctors
-@app.get("/doctors", response_model=List[DoctorResponse])
+@app.get("/doctors",
+    status_code=status.HTTP_200_OK,
+    tags=["Doctors"],
+    summary="Get all doctors",
+    description="Get a list of all doctors"
+)
 def get_doctors(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    doctors = db.query(Doctor).offset(skip).limit(limit).all()
-    return doctors
+    try:
+        doctors = db.query(Doctor).offset(skip).limit(limit).all()
+        if doctors is None:
+            raise HTTPException(status_code=404, detail="Dokter tidak ditemukan")
+        
+        return create_response(
+            status=True,
+            message="Dokter berhasil ditemukan",
+            data=doctors
+        )
+    except Exception as e:
+        return create_response(
+            status=False,
+            message=f"{e}",
+            error=str(e)
+        )
 
 # Get Doctor by ID
-@app.get("/doctors/{doctor_id}", response_model=DoctorResponse)
+@app.get("/doctors/{doctor_id}", 
+    status_code=status.HTTP_200_OK,
+    tags=["Doctors"],
+    summary="Get a doctor by ID",
+    description="Get a doctor by their ID",
+    response_model=DoctorResponse
+)
 def get_doctor(
     doctor_id: int,
     db: Session = Depends(get_db)
@@ -316,7 +399,13 @@ def get_doctor(
     return doctor
 
 # Update Doctor
-@app.put("/doctors/{doctor_id}", response_model=DoctorResponse)
+@app.put("/doctors/{doctor_id}", 
+    status_code=status.HTTP_200_OK,
+    tags=["Doctors"],
+    summary="Update a doctor",
+    description="Update a doctor with the provided information",
+    response_model=DoctorResponse
+)
 def update_doctor(
     doctor_id: int,
     doctor_update: DoctorUpdate,
@@ -335,7 +424,12 @@ def update_doctor(
     return db_doctor
 
 # Delete Doctor (Soft Delete)
-@app.delete("/doctors/{doctor_id}")
+@app.delete("/doctors/{doctor_id}"
+    , status_code=status.HTTP_200_OK,
+    tags=["Doctors"],
+    summary="Delete a doctor",
+    description="Delete a doctor by their ID"
+)
 def delete_doctor(
     doctor_id: int,
     db: Session = Depends(get_db),
@@ -348,3 +442,78 @@ def delete_doctor(
     db_doctor.is_active = False
     db.commit()
     return {"message": "Dokter berhasil dinonaktifkan"}
+
+@app.get("/doctors/search/{service_type}",
+    status_code=status.HTTP_200_OK,
+    tags=["Doctors"],
+    summary="Search doctors by service type",
+    description="Get a list of doctors filtered by service type"
+)
+def search_doctors_by_service(
+    service_type: str,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    try:
+        # Query doctors filtered by service type
+        doctors = db.query(Doctor)\
+            .filter(Doctor.jenis_layanan.ilike(f"%{service_type}%"))\
+            .filter(Doctor.is_active == True)\
+            .offset(skip)\
+            .limit(limit)\
+            .all()
+        
+        if not doctors:
+            return create_response(
+                status=True,
+                message="No doctors found for this service type",
+                data=[]
+            )
+        
+        return create_response(
+            status=True,
+            message="Doctors found successfully",
+            data=doctors
+        )
+    except Exception as e:
+        return create_response(
+            status=False,
+            message= f"Error searching doctors: {e}"
+        )
+
+
+@app.get("/services",
+    status_code=status.HTTP_200_OK,
+    tags=["Services"],
+    summary="Get all service types",
+    description="Get a list of all available medical service types"
+)
+def get_services(
+    db: Session = Depends(get_db)
+):
+    try:
+        # Query unique service types from doctors table
+        services = db.query(Doctor.jenis_layanan).distinct().all()
+        
+        # Convert query result to list of strings
+        service_list = [service[0] for service in services]
+        
+        if not service_list:
+            return create_response(
+                status=True,
+                message="No services found",
+                data=[]
+            )
+        
+        return create_response(
+            status=True,
+            message="Services retrieved successfully",
+            data=service_list
+        )
+    except Exception as e:
+        return create_response(
+            status=False,
+            message="Error retrieving services",
+            error=str(e)
+        )
