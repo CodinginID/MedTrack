@@ -149,7 +149,7 @@ export default function DashboardPage() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       <div className="flex justify-between items-center mb-8">
-        <h2 className="text-2xl font-bold text-white">Pendaftaran Berobat</h2>
+        <h2 className="text-2xl font-bold text-gray-900">Pendaftaran Berobat</h2>
           {/* User Dropdown */}
           <div className="relative" ref={dropdownRef}>
           <button 
@@ -157,8 +157,8 @@ export default function DashboardPage() {
             className="flex items-center space-x-2 focus:outline-none"
           >
             <div className="text-right">
-              <p className="text-gray-400">Selamat datang,</p>
-              <p className="text-white font-medium">{user?.name || 'Tamu'}</p>
+              <p className="text-gray-900">Selamat datang,</p>
+              <p className="text-gray-900 font-medium">{user?.name || 'Tamu'}</p>
             </div>
             <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white">
               {user?.name?.charAt(0).toUpperCase() || 'G'}
